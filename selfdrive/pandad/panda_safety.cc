@@ -49,7 +49,13 @@ std::vector<std::string> PandaSafety::fetchCarParams() {
     log_once_ = true;
   }
 
-  if (!params_.getBool("ControlsReady")) {
+  // Gating on ControlsReady created a bootstrap deadlock on cars whose controls
+  // pipeline could not fully initialize while the panda was still in noOutput
+  // (controlsd waits on a valid safety model, which waits on ControlsReady).
+  // Instead, wait only until CarParams is actually populated (written by card in the
+  // same cycle as FirmwareQueryDone). This applies the safety model as soon as the
+  // car is recognized, matching older (working) bases, without dereferencing empty.
+  if (params_.get("CarParams").empty() || params_.get("CarParamsSP").empty()) {
     return {};
   }
   return {params_.get("CarParams"), params_.get("CarParamsSP")};
