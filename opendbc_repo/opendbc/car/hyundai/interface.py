@@ -57,6 +57,14 @@ class CarInterface(CarInterfaceBase):
         ret.flags |= HyundaiFlags.CANFD_LKA_STEER_MSG.value
         if 0x110 in fingerprint[CAN.CAM]:
           ret.flags |= HyundaiFlags.CANFD_LKA_STEER_MSG_ALT.value
+        # The Carnival HEV is LKA-steering (HDA2) AND camera-SCC: its SCC_CONTROL
+        # is sent by the camera/ADAS-ECU (stock arbiter on ECAN bus 1, not the
+        # radar, not bus 2). Mark it camera-SCC so longitudinal uses
+        # block-and-replace (create_acc_control sends our own SCC_CONTROL on bus 1)
+        # instead of the radar-disable path. The safety header has a matching
+        # dedicated LKA + camera-SCC path. (UNVALIDATED — experimental.)
+        if candidate == CAR.KIA_CARNIVAL_HEV_4TH_GEN:
+          ret.flags |= HyundaiFlags.CANFD_CAMERA_SCC.value
       else:
         # no LKA steering
         if not ret.flags & HyundaiFlags.CANFD_RADAR_SCC:

@@ -589,10 +589,11 @@ class CAR(Platforms):
       HyundaiCarDocs("Kia Carnival Hybrid (with HDA II) 2025", "Highway Driving Assist II", car_parts=CarParts.common([CarHarness.hyundai_q])),
     ],
     CarSpecs(mass=2253, wheelbase=3.09, steerRatio=14.23),
-    # CCNC platform. Longitudinal is NOT yet validated on the Carnival HEV: mark it
-    # unsupported so openpilot never offers/attempts it (no on-screen errors), while
-    # keeping the CCNC cluster + ALT_BUTTONS plumbing ready for future enablement.
-    flags=HyundaiFlags.CCNC | HyundaiFlags.UNSUPPORTED_LONGITUDINAL,
+    # CCNC platform, camera-SCC HEV. Longitudinal re-enabled as experimental:
+    # the safety header now has a dedicated LKA-steering + camera-SCC path
+    # (SCC on ECAN bus 1), and ExperimentalMode/AlphaLongitudinal trigger it.
+    # STILL UNVALIDATED on the car — AEB/FCW behavior must be watched.
+    flags=HyundaiFlags.CCNC,
   )
 
   # Genesis
