@@ -589,11 +589,13 @@ class CAR(Platforms):
       HyundaiCarDocs("Kia Carnival Hybrid (with HDA II) 2025", "Highway Driving Assist II", car_parts=CarParts.common([CarHarness.hyundai_q])),
     ],
     CarSpecs(mass=2253, wheelbase=3.09, steerRatio=14.23),
-    # CCNC platform, camera-SCC HEV. Longitudinal re-enabled as experimental:
-    # the safety header now has a dedicated LKA-steering + camera-SCC path
-    # (SCC on ECAN bus 1), and ExperimentalMode/AlphaLongitudinal trigger it.
-    # STILL UNVALIDATED on the car — AEB/FCW behavior must be watched.
-    flags=HyundaiFlags.CCNC,
+    # CCNC platform. LKA-steering (HDA2) BUT radar-SCC: SCC_CONTROL (0x1A0, addr 416)
+    # is sent by the radar/ADAS arbiter on ECAN bus 1 — NOT the camera (verified live
+    # in rlog: address 416 present on bus 1, absent on bus 0/camera). Matches the ICE
+    # Carnival 4th gen (CANFD_RADAR_SCC). The prior CANFD_CAMERA_SCC experiment made
+    # carstate read SCC_CONTROL from the camera bus -> persistent canValid=false ->
+    # "Unknown Vehicle Variant" dashcam.
+    flags=HyundaiFlags.CCNC | HyundaiFlags.CANFD_RADAR_SCC,
   )
 
   # Genesis

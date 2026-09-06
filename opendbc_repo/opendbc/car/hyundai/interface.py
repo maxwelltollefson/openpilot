@@ -63,14 +63,13 @@ class CarInterface(CarInterfaceBase):
         ret.flags |= HyundaiFlags.CANFD_LKA_STEER_MSG.value
         if 0x110 in fingerprint[CAN.CAM]:
           ret.flags |= HyundaiFlags.CANFD_LKA_STEER_MSG_ALT.value
-        # The Carnival HEV is LKA-steering (HDA2) AND camera-SCC: its SCC_CONTROL
-        # is sent by the camera/ADAS-ECU (stock arbiter on ECAN bus 1, not the
-        # radar, not bus 2). Mark it camera-SCC so longitudinal uses
-        # block-and-replace (create_acc_control sends our own SCC_CONTROL on bus 1)
-        # instead of the radar-disable path. The safety header has a matching
-        # dedicated LKA + camera-SCC path. (UNVALIDATED — experimental.)
-        if candidate == CAR.KIA_CARNIVAL_HEV_4TH_GEN:
-          ret.flags |= HyundaiFlags.CANFD_CAMERA_SCC.value
+        # NOTE: the Carnival HEV is LKA-steering (HDA2) BUT radar-SCC — its
+        # SCC_CONTROL (0x1A0, addr 416) is sent on ECAN bus 1, not the camera bus,
+        # so CANFD_RADAR_SCC is set statically in values.py (matches ICE Carnival).
+        # Do NOT force CANFD_CAMERA_SCC here: carstate reads cp_cruise_info = cp_cam
+        # when that flag is set, which pulls SCC_CONTROL from the wrong (camera) bus
+        # -> 56x "0x1a0 SCC_CONTROL not valid" -> canValid=false -> "Unknown Vehicle
+        # Variant" dashcam.
       else:
         # no LKA steering
         if not ret.flags & HyundaiFlags.CANFD_RADAR_SCC:
