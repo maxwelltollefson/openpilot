@@ -60,6 +60,9 @@
 
 static bool hyundai_canfd_alt_buttons = false;
 static bool hyundai_canfd_lka_steer_msg_alt = false;
+// LKA-steering + camera-SCC (Carnival HEV): the camera sends SCC on ECAN bus 1,
+// not bus 2. Keeps scc_bus on bus 1 for cruise-state checking + SCC RX check.
+static bool hyundai_canfd_lka_camera_scc = false;
 
 static unsigned int hyundai_canfd_get_lka_addr(void) {
   return hyundai_canfd_lka_steer_msg_alt ? 0x110U : 0x50U;
@@ -83,7 +86,9 @@ static uint32_t hyundai_canfd_get_checksum(const CANPacket_t *msg) {
 static void hyundai_canfd_rx_hook(const CANPacket_t *msg) {
 
   const unsigned pt_bus = hyundai_canfd_lka_steer_msg ? 1U : 0U;
-  const unsigned int scc_bus = hyundai_camera_scc ? 2U : pt_bus;
+  // Camera-SCC cars normally put SCC on bus 2, but LKA-steering camera-SCC cars
+  // (Carnival HEV) keep it on ECAN bus 1 — so only force bus 2 for non-LKA camera-SCC.
+  const unsigned int scc_bus = (hyundai_camera_scc && !hyundai_canfd_lka_camera_scc) ? 2U : pt_bus;
 
   if (msg->bus == pt_bus) {
     // driver torque
@@ -277,6 +282,26 @@ static safety_config hyundai_canfd_init(uint16_t param) {
     {0x1DA, 1, 32, .check_relay = false},  // ADRV_0x1da
   };
 
+  // *** LKA-steering + camera-SCC longitudinal (Carnival HEV) ***
+  // The Carnival HEV is LKA-steering (HDA2/ADAS-ECU) AND camera-SCC: its
+  // SCC_CONTROL comes from the camera on ECAN bus 1 (not the radar, not bus 2),
+  // so longitudinal uses block-and-replace on bus 1 — send our own SCC_CONTROL
+  // and keep the ADRV keep-alive/diagnostic messages alive WITHOUT sending the
+  // 0x730 tester-present ADAS-ECU disable (camera-SCC does not disable the ADAS
+  // ECU). Uses ALT buttons (0x1AA) and LKAS_ALT (0x110) like other alt-button cars.
+  // (Nonstandard combination — no upstream precedent; experimental.)
+  static const CanMsg HYUNDAI_CANFD_LKA_STEER_MSG_CAMERA_SCC_LONG_TX_MSGS[] = {
+    HYUNDAI_CANFD_LKA_STEER_MSG_ALT_ALT_BUTTONS_COMMON_TX_MSGS(0, 1)
+    HYUNDAI_CANFD_LFA_STEERING_COMMON_TX_MSGS(1)
+    HYUNDAI_CANFD_SCC_CONTROL_COMMON_TX_MSGS(1, true)
+    {0x51,  0, 32, .check_relay = false},  // ADRV_0x51
+    {0x160, 1, 16, .check_relay = false},  // ADRV_0x160
+    {0x1EA, 1, 32, .check_relay = false},  // ADRV_0x1ea
+    {0x200, 1,  8, .check_relay = false},  // ADRV_0x200
+    {0x345, 1,  8, .check_relay = false},  // ADRV_0x345
+    {0x1DA, 1, 32, .check_relay = false},  // ADRV_0x1da
+  };
+
   static const CanMsg HYUNDAI_CANFD_LFA_STEERING_TX_MSGS[] = {
     HYUNDAI_CANFD_CRUISE_BUTTON_TX_MSGS(2)
     HYUNDAI_CANFD_LFA_STEERING_COMMON_TX_MSGS(0)
@@ -346,7 +371,17 @@ static safety_config hyundai_canfd_init(uint16_t param) {
         HYUNDAI_CANFD_ALT_BUTTONS_RX_CHECKS(1)
       };
 
-      if (hyundai_canfd_alt_buttons) {
+      // LKA-steering + camera-SCC: SCC lives on ECAN bus 1 (camera), not bus 2,
+      // so the SCC RX check must stay on bus 1. Used by the Carnival HEV.
+      static RxCheck hyundai_canfd_lka_steer_msg_camera_scc_long_rx_checks[] = {
+        HYUNDAI_CANFD_ALT_BUTTONS_RX_CHECKS(1)
+        HYUNDAI_CANFD_SCC_ADDR_CHECK(1)
+      };
+
+      if (hyundai_camera_scc) {
+        hyundai_canfd_lka_camera_scc = true;
+        ret = BUILD_SAFETY_CFG(hyundai_canfd_lka_steer_msg_camera_scc_long_rx_checks, HYUNDAI_CANFD_LKA_STEER_MSG_CAMERA_SCC_LONG_TX_MSGS);
+      } else if (hyundai_canfd_alt_buttons) {
         ret = BUILD_SAFETY_CFG(hyundai_canfd_lka_steer_msg_alt_buttons_long_rx_checks, HYUNDAI_CANFD_LKA_STEER_MSG_LONG_TX_MSGS);
       } else {
         ret = BUILD_SAFETY_CFG(hyundai_canfd_lka_steer_msg_long_rx_checks, HYUNDAI_CANFD_LKA_STEER_MSG_LONG_TX_MSGS);
