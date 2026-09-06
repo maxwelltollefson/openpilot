@@ -78,21 +78,40 @@ This is the single most valuable thing you can produce for yourself *and* the co
 
 ## Drive 4 — corner/side-radar capture (unlocks Tier 2 autonomous pass)
 
-This specifically targets the rear-lateral "is a car closing from behind" signal that
-would let the Auto-Passing Suggest feature go from *suggest* to *autonomous*.
+**Revised finding (2026-09-06, from 11 route rlogs + parts catalog) — the Mando
+point-cloud premise is wrong for this trim.** See `docs/CAN_address_correlation.md`.
 
-- [ ] Drive on a multi-lane road with cars **passing you / alongside you**, and a few
-      moments where a car closes on you from behind in the adjacent lane.
-- [ ] In the rlog, check whether the Carnival transmits a Mando-style corner-radar
-      point stream — traffic on **`0x100`/`0x200`/`0x101`/`0x201`** (the decoded
-      EV6/Ioniq 6 format; see `docs/AutoPassingSuggest_Tier1.md` → "Prior art").
-- [ ] If those addresses are empty, look for a CAN-FD message from the `0x7b7`
-      corner-radar ECU carrying a repeating **distance + relative-velocity + azimuth**
-      triplet (scales ~1/64 m, ~1/32 m/s, ~1/512 rad), ~20 Hz.
-- [ ] Confirm whether that stream has a per-point **validity/status** flag.
+- **Confirmed:** `0x101`/`0x201` (Mando corner-radar point messages) are *absent* on
+  the Carnival. `0x100`/`0x200` are already-used (accelerator / ADAS-DRV keepalive),
+  not corner radar. `0x7b7` responds during fingerprinting (a real ECU) but has only
+  ever done UDS handshake (`22 f1 …` / `3e` keepalive / `19 02` DTC) — it has **never
+  streamed a point cloud** in any captured drive, and openpilot never decoded a
+  `cornerRadar` firmware string from it (only `fwdRadar` 99110-ES500 + `fwdCamera`
+  99210-R0500).
+- **Physical part:** the 2025 Carnival (incl. Hybrid EX) has **rear blind-spot radars**
+  (right `99150-R0510`; "Blind Spot / Rear Corner Radar"). These are **presence-only
+  BSD sensors** (`BCW_LtIndSta`/`BCW_RtIndSta`), already decoded via
+  `ADAS_CMD_50_50ms` → `leftBlindspot`/`rightBlindspot`. There is **no front-corner
+  radar** (the DBC `BLINDSPOTS_FRONT_CORNER_1/2` names are mislabeled blind-spot
+  presence messages, signals are `NEW_SIGNAL_N` placeholders).
+- **Implication:** no range-relative-velocity-azimuth point stream appears to exist on
+  this trim. A Tier-2 autonomous pass gated on "object closing at >X m/s" cannot use
+  radar closing-rate here (hardware is presence-only); it must fall back to the BSD
+  booleans and/or the vision model.
 
-This is the one empirical capture that determines whether fully-autonomous overtake is
-possible — and it's the exact piece `pd0wm` (PR #24221) never finished on the EV6.
+**Remaining one-drive confirmation (the "100% sure" gap):** no captured drive had a car
+actually alongside/passing, so the definitive proof that `0x7b7` never streams a point
+cloud still requires a drive that triggers blind-spot activity:
+
+- [ ] Drive multi-lane with cars **passing / alongside / closing from behind**; record a
+      full rlog and note roughly *when* a car was alongside.
+- [ ] In that rlog, check whether `0x7b7` begins a steady ~20 Hz stream (vs. the
+      fingerprint-time handshake only), and whether any unmapped bus-1 8-byte message
+      (the `0x38c`–`0x3e6` / `0x40x`–`0x49x` cluster) bursts at the pass moments.
+
+If `0x7b7` stays idle even during a pass, the presence-only conclusion is confirmed and
+Tier 2 must be redesigned around BSD booleans + vision (no corner point cloud).
+
 
 ## Drive 5 — DAW "take a break" suppression capture
 
