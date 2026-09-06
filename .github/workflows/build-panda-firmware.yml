@@ -1,0 +1,68 @@
+name: build-panda-firmware
+
+# Builds the panda firmware (.bin.signed) from the vendored opendbc safety source.
+#
+# Why this exists: the Carnival HEV port fixed the HDA2/LKA + ALT_BUTTONS safety
+# path in opendbc_repo/opendbc/safety/modes/hyundai_canfd.h (commits 032c02a4a /
+# 5ef4d641e), but the committed panda/board/obj/panda_h7.bin.signed is still the
+# stale base-release binary (6a17f75c6) that RX-checks 0x1CF instead of 0x1AA.
+# pandad auto-flashes that stale .signed on every boot, causing the persistent
+# controlsMismatch. This workflow recompiles the firmware from the current source
+# so the corrected binary can be committed back.
+#
+# NOTE: builds the DEBUG profile (self-signed debug cert in board/certs/debug),
+# which pandad accepts on a non-release fork. A RELEASE build additionally needs
+# the comma signing cert (CERT env) and is done by sunnypilot's release pipeline.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'opendbc_repo/opendbc/safety/**'
+      - 'panda/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install panda build dependencies (scons + pycryptodome)
+        run: |
+          pip install --upgrade pip
+          pip install scons pycryptodome
+
+      - name: Install ARM toolchain (gcc-arm-none-eabi)
+        run: |
+          # comma distributes the pinned toolchain via their dependencies repo
+          pip install "gcc-arm-none-eabi @ git+https://github.com/commaai/dependencies.git@release-gcc-arm-none-eabi#subdirectory=gcc-arm-none-eabi"
+          which arm-none-eabi-gcc
+          arm-none-eabi-gcc --version | head -1
+
+      - name: Build panda firmware
+        run: |
+          cd panda
+          PYTHONPATH="${GITHUB_WORKSPACE}/opendbc_repo:${PYTHONPATH}" scons -j"$(nproc)"
+          cd ..
+
+      - name: Report build output
+        run: |
+          echo "--- produced firmware ---"
+          ls -la panda/board/obj/*.bin panda/board/obj/*.signed 2>/dev/null || true
+          echo "--- version stamp ---"
+          cat panda/board/obj/version 2>/dev/null || true
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: panda-firmware
+          path: |
+            panda/board/obj/panda_h7.bin.signed
+            panda/board/obj/panda_h7/main.bin
+            panda/board/obj/bootstub.panda_h7.bin
+            panda/board/obj/version
+          if-no-files-found: error
