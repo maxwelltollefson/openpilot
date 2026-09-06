@@ -338,10 +338,16 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
         ("CRUISE_BUTTONS", 1)
       ]
     if CP.enableBsm:
-      # BSM indicators are read from ADAS_CMD_50_50ms but the message was never
-      # subscribed, so leftBlindspot/rightBlindspot were never populated.
+      # BSM indicators are read from ADAS_CMD_50_50ms (0x1BA) but the message was
+      # never subscribed, so leftBlindspot/rightBlindspot were never populated.
       # (fix from acidofrain/kia-carnival-2026-sx)
-      msgs += [("ADAS_CMD_50_50ms", 50)]
+      #
+      # IMPORTANT: 0x1BA is NOT present in the Carnival HEV's startup fingerprint,
+      # so it must be subscribed as BEST-EFFORT (freq=NaN -> ignore_alive=True).
+      # Subscribing at a hard 50 Hz makes MessageState.valid() return False every
+      # frame (no timestamps ever recorded for an absent message), which drives
+      # can_valid=False -> EventName.canError -> "Unknown Vehicle Variant" dashcam.
+      msgs += [("ADAS_CMD_50_50ms", float("nan"))]
     if CP.flags & HyundaiFlags.CCNC and not CP.flags & HyundaiFlags.CANFD_LKA_STEER_MSG:
       cam_msgs += [
         ("CCNC_0x161", 20),
