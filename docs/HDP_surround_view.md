@@ -2,8 +2,10 @@
 
 ## What drives the "3 lanes with cars left/right/behind + velocity" display
 
-The full HDA2 surround view is rendered from **`CCNC_0x162`** (`BO_ 354`, address
-`0x162`, 32-byte CCNC cluster message). It carries a up-to-6-object surround track:
+The full HDA2 surround view is **rendered** from `CCNC_0x162` (`BO_ 354`, address
+`0x162`, 32-byte CCNC cluster message). This is an **HMI / render-layer message** — it
+tells the cluster *what box to draw*, not the raw sensor track. It carries a
+up-to-6-object surround *display* set:
 
 | Signal | Start|Len | Meaning |
 |---|---|---|---|
@@ -18,6 +20,26 @@ Each object has a distance (meters) + lateral offset (meters) + status. The clus
 displayed velocity is derived from the ADAS ECU's tracking of these distances over
 time (doppler from the rear corner radars / front MRR20), and the `DISTANCE_CAR` /
 `DISTANCE_SPACING` / `DISTANCE_LEAD` signals drive the color/box display.
+
+## Underlying sensor data vs. HMI render (important distinction)
+
+`CCNC_0x162` is the *render* layer. The actual sensor-level velocity/track data the ADAS
+ECU fuses is mostly **not exposed** on a bus openpilot reads. What the DBC actually
+decodes today:
+
+1. **Front lead velocity (real)**: `FR_CMR_03_50ms` (`BO_ 437`) → `Relative_Velocity`
+   (`200|12`, 0.05 m/s, +preceding / −oncoming) — a genuine camera-derived closing-rate
+   for the forward lead. The one true velocity signal in the DBC.
+2. **Front radar points**: MRR20 `0x180`/`0x181` (range + lateral; velocity is *undecoded* —
+   the same "find relative speed" TODO `pd0wm` left on the EV6).
+3. **Flanking/rear display boxes**: `CCNC_0x162` `LEAD_LEFT/RIGHT/LEFT_REAR/RIGHT_REAR`
+   (HMI render, HDP-gated, distance + lateral only — no velocity field).
+4. **Blind-spot presence**: `ADAS_CMD_50_50ms` `BCW_Lt/RtIndSta` (rear corner radars).
+
+So a raw *flanking/rear* radar track with range-rate is either not on this bus or is an
+undecoded message. The surround-view "velocity" you see is the ADAS ECU's fused output
+(forwards it is the camera `Relative_Velocity`; flanking/rear it is the HMI distance
+boxes plus the car's internal tracking), not an openpilot-readable per-object range-rate.
 
 ## Gating — full HDP only
 
