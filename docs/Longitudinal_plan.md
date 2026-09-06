@@ -101,9 +101,40 @@ but is unvalidated for this MRR20 + CCNC combination and risks radar/AEB loss.
 - Don't enable it fleet-wide or silently; keep it behind a toggle + explicit opt-in until
   AEB/FCW behavior is confirmed safe.
 
+## Standstill / no-lead stop-halt-resume (the remaining unknown)
+
+The mature HKG camera-SCC cars (Ioniq 5, EV6, Kona, Santa Fe) do stop-and-go via:
+
+- `LongCtrlState.stopping` (the longitudinal controller's "brake to a halt" state) —
+  set by the safe-stop / low-speed logic, **not lead-required** (a lead isn't needed to
+  enter `stopping`; a 0/low target or safe-stop triggers it too).
+- `SCC_CONTROL.StopReq = 1` when `stopping` — authorizes full brake-to-zero + auto-hold.
+  (`create_acc_control` already emits this, line `"StopReq": 1 if tuning.stopping else 0`.)
+- Resume via `CC.cruiseControl.resume` → `RES_ACCEL` button sequence
+  (`carcontroller.py` "cruise standstill resume", line 248) → stock ACC creeps/resumes.
+
+So the no-lead "stop + hold + resume" mechanism **exists in the code and does not
+require a lead object**. The unverified part is **whether the Carnival's ADAS ECU
+honors `StopReq` for a no-lead auto-hold the way the (LFA-steering) proven cars do** —
+the Carnival is LKA-steering, the same architectural gap that made its camera-SCC
+path nonstandard. This is answerable only on-car.
+
+Note: the ACC set-speed has a ~20 mph floor, so there's no user UI to command a
+no-lead stop directly; the stop must come from the controller's `stopping` state.
+
+## On-car validation checklist (the one drive that closes it)
+
+1. **Lead-follow (already partially proven):** engage experimental long behind a lead,
+   confirm it holds a gap (reads `CCNC_0x162.LEAD_DISTANCE`) and follows decel.
+2. **No-lead stop/hold/resume:** in a clear empty area (~20 mph), trigger `stopping`
+   (safe-stop or low-speed) and confirm: (a) brakes to 0, (b) holds (no creep, no SCC
+   dropout), (c) resumes via RES_ACCEL. Watch AEB/FCW for spurious faults the entire time.
+3. Capture a full rlog of both; from it verify `StopReq`/`aReqValue`/`LEAD_DISTANCE`/`vEgo`.
+
 ## Realistic scope
 
-This is **actuator validation work on the vehicle**, not more rlog decoding. The sensing
-side is done. The plan is now: (1) identify the SCC arbiter, (2) prove the command channel,
-(3) suppress stock cleanly, (4) pilot, (5) validate incrementally. Each step is small and
-reversible; the on-car suppression + AEB regression testing is the genuine risk and effort.
+Sensing is solved (lead from `CCNC_0x162` + derived velocity); actuation channel
+(`aReqValue`) is proven live; the stop/hold/resume mechanism is present in code. The
+remaining work is **on-car validation of the ADAS ECU's acceptance** — especially
+`StopReq` no-lead auto-hold and AEB/FCW non-interference. This is vehicle work, not
+more rlog decoding.
