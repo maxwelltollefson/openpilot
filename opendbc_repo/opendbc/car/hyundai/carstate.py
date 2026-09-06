@@ -255,18 +255,6 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
 
     ret.steeringRateDeg = cp.vl["STEERING_SENSORS"]["STEERING_RATE"]
     ret.steeringAngleDeg = cp.vl["STEERING_SENSORS"]["STEERING_ANGLE"]
-    if self.CP.carFingerprint in (CAR.KIA_CARNIVAL_HEV_4TH_GEN,):
-      # The Carnival HEV's raw column angle (STEERING_SENSORS->STEERING_ANGLE) is a
-      # multi-turn sensor that wraps past ±180° during low-speed parking maneuvers
-      # (observed reading ~-315° while turning), which both trips the >85° EPS
-      # fault-avoidance guard and diverges from the ADAS angle context expected by
-      # the LKAS_ALT ADAS_StrAnglReqVal (which "tracks MDPS->STEERING_ANGLE").
-      # Use the MDPS compensated wheel angle instead; it stays within ±176.7° and is
-      # the same sensor the ADAS ECU validates against. Skip the sentinel values
-      # (32766 "Not Initialized" / 32767 "Error Indicator" per the DBC).
-      mdps_angle = cp.vl["MDPS"]["MDPS_EstStrAnglVal"]
-      if abs(mdps_angle) < 300.0:
-        ret.steeringAngleDeg = mdps_angle
     ret.steeringTorque = cp.vl["MDPS"]["MDPS_StrTqSnsrVal"]
     ret.steeringTorqueEps = cp.vl["MDPS"]["MDPS_OutTqVal"]
     ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > self.params.STEER_THRESHOLD, 5)
