@@ -76,48 +76,34 @@ This is the single most valuable thing you can produce for yourself *and* the co
 - [ ] Note the **MRR20 radar tracks** — on the UI, confirm the radar plot shows lead
       vehicles (validates the 0x180/0x184 signal scaling I ported from PR #351).
 
-## Drive 4 — corner/side-radar capture (unlocks Tier 2 autonomous pass)
+## Drive 4 — corner/side-radar (unlocks Tier 2 autonomous pass)
 
-**Revised finding (2026-09-06, from 11 route rlogs + parts catalog) — the Mando
-point-cloud premise is wrong for this trim.** See `docs/CAN_address_correlation.md`.
+**DEFINITIVE FINDING (2026-09-06) — presence-only BSD; no rear-corner radar point
+cloud is exposed on the CAN bus.** Confirmed with a **real alongside-vehicle capture**
+(`00000003--77d1519272`, ccdunder route; `BCW_RtIndSta` fired for 147 frames with a car
+on the right). See `docs/CAN_address_correlation.md`.
 
-- **Confirmed:** `0x101`/`0x201` (Mando corner-radar point messages) are *absent* on
-  the Carnival. `0x100`/`0x200` are already-used (accelerator / ADAS-DRV keepalive),
-  not corner radar. `0x7b7` responds during fingerprinting (a real ECU) but has only
-  ever done UDS handshake (`22 f1 …` / `3e` keepalive / `19 02` DTC) — it has **never
-  streamed a point cloud** in any captured drive, and openpilot never decoded a
-  `cornerRadar` firmware string from it (only `fwdRadar` 99110-ES500 + `fwdCamera`
-  99210-R0500).
-- **Physical part:** the 2025 Carnival (incl. Hybrid EX) has **rear corner radars**
-  (right `99150-R0510`; "Blind Spot / Rear Corner Radar"). Per the Kia manual these
-  drive **both BCA (Blind-Spot Collision-Avoidance, forward) and RCCA (Rear
-  Cross-Traffic Collision-Avoidance, reverse)** — and RCCA *detects the velocity of
-  an approaching vehicle* ("detects vehicles approaching from left/right ... applies
-  brakes"). So the sensors are **doppler / range+velocity capable**, not presence-only.
-  Openpilot today reads only the presence booleans (`BCW_LtIndSta`/`BCW_RtIndSta` via
-  `ADAS_CMD_50_50ms`); the velocity the car internally tracks is surfaced as the
-  BCA/RCCA cluster alert + brake, not a raw point stream we have decoded. There is **no
-  front-corner radar** (the DBC `BLINDSPOTS_FRONT_CORNER_1/2` names are mislabeled; their
-  signals are `NEW_SIGNAL_N` placeholders).
-- **Corrected implication:** range + relative-velocity data *does exist* on this trim
-  (the rear corner radars measure it — that's what RCCA/BCA act on). It is **not yet
-  decoded** on the CAN bus, so Tier-2 autonomous pass cannot yet *use* it, but the
-  hardware is capable. The hunt is therefore "find which CAN message carries the BCA/RCCA
-  velocity when an alert is active," not "the hardware can't provide velocity."
+- **Confirmed with alongside-vehicle evidence:**
+  - **`0x7B7` (cornerRadar ECU): zero frames the entire route** — it never transmits
+    object data, even with a car alongside. Fingerprint-time UDS handshake only.
+  - `0x1E5` / `0x36A` (`BLINDSPOTS_FRONT_CORNER_1/2`): ~20 Hz status/envelope frames
+    (checksum+counter+constants); **no range/velocity/azimuth object fields**.
+  - `0x101`/`0x201` (Mando point messages): absent (front-only MRR20 radar `0x180/0x181`).
+  - The **only** blind-spot output is `ADAS_CMD_50_50ms` (`0x1BA`) → `BCW_Lt/RtIndSta`
+    **presence booleans**.
+- **Physical part:** rear corner radars `99150-R0510` (doppler-capable — they drive
+  BCA/RCCA including closing-velocity *internally*), but that velocity is used inside
+  the ADAS ECU for the cluster alert + brake and is **not** re-published as a raw point
+  stream on any bus openpilot reads.
+- **Conclusion (final):** Tier-2 autonomous pass **cannot** use rear-radar range+velocity
+  (it doesn't exist on the CAN bus). It can use BSD presence booleans + the vision model
+  (which sees lead/adjacent vehicles). No further corner-radar reverse-engineering to do.
 
+**Related fix in this fork:** `enableBsm=True` for the Carnival HEV — the auto-detect
+(`0x1ba in fingerprint`) was False (0x1BA absent from the startup fingerprint), so
+`leftBlindspot`/`rightBlindspot` silently never populated. The BSM indicators now surface
+correctly (verified against the alongside-vehicle rlog).
 
-**Remaining one-drive confirmation (the "100% sure" gap):** no captured drive had a car
-actually alongside/passing, so the definitive proof that `0x7b7` never streams a point
-cloud still requires a drive that triggers blind-spot activity:
-
-- [ ] Drive multi-lane with cars **passing / alongside / closing from behind**; record a
-      full rlog and note roughly *when* a car was alongside.
-- [ ] In that rlog, check whether `0x7b7` begins a steady ~20 Hz stream (vs. the
-      fingerprint-time handshake only), and whether any unmapped bus-1 8-byte message
-      (the `0x38c`–`0x3e6` / `0x40x`–`0x49x` cluster) bursts at the pass moments.
-
-If `0x7b7` stays idle even during a pass, the presence-only conclusion is confirmed and
-Tier 2 must be redesigned around BSD booleans + vision (no corner point cloud).
 
 
 ## Drive 5 — DAW "take a break" suppression capture
