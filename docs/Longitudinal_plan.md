@@ -17,26 +17,26 @@ ccdunder reference). Decoded with the fork's capnp + DBC.
    `CRUISE_STANDSTILL : 76|1`, `VSetDis : 103|8`, `ObjValid : 46|1`.
    `ACC_REQ : 68|1` in the companion ACC-request message.
 
-3. **Lead sensing — corrected/refined (2026-09-06, from lead-vehicle rlogs):**
-   - `SCC_CONTROL.ACC_ObjDist`/`ACC_ObjRelSpd` are **always at the invalid/max
-     sentinel** (204.6 m / +34.6 m/s) on the Carnival HEV, even with a lead
-     present (3,000/3,000 frames in `seg3`). The ADAS ECU tracks the lead
-     *internally* and only outputs `aReqValue`; it does NOT expose per-object
-     range/velocity in `SCC_CONTROL`.
-   - The camera `FR_CMR_03_50ms` (0x1B5) lead field (`ID_CIPV`/`Relative_Velocity`/
-     `Longitudinal_Distance`) is also 0/"no lead" in every route.
-   - **The lead range+closing-velocity therefore live in the MRR20 radar `0x181`**
-     (32-byte track cluster), which is present (~20 Hz) but **undecoded**. Byte-
-     statistics identify byte 15 + 17 as the primary high-variability data fields
-     (likely range/velocity) and bytes 13/19/20/22/23 as secondary/lateral/azimuth,
-     but exact scaling is unresolved (needs a controlled lead-at-known-distance capture).
+3. **Lead sensing — RESOLVED (2026-09-06, from controlled lead-follow route 09bea0550a):**
+   - `SCC_CONTROL.ACC_ObjDist`/`ACC_ObjRelSpd` are **sentinel** on the Carnival HEV
+     (204.6 m / +34.6 m/s) — the ADAS ECU fuses the radar/camera internally and only
+     emits `aReqValue`, never the per-object lead.
+   - The camera `FR_CMR_03_50ms` lead and the MRR20 radar (`0x180`/`0x181`/`0x185`)
+     also do NOT expose a decodable lead object (`0x181` is a scan-sweep frame; `0x180`
+     word16 is CRC+counter with zero payload).
+   - **The lead range IS available in `CCNC_0x162.LEAD_DISTANCE` (69|11, 0.1 m)** — the
+     CCNC cluster's own lead rendering. Validated against a confirmed "lead 2-3 s ahead,
+     with a slowdown": reads 34 m → 15 m while the lead braked, and closing velocity
+     −2.0 m/s derived as d(DISTANCE)/dt. This is the ADAS ECU's *fused* lead (camera +
+     radar), which is the authoritative target — better than raw radar for a longitudinal
+     controller.
+   - Implemented: `RadarInterfaceExt` reads the Carnival lead from `CCNC_0x162.LEAD_DISTANCE`
+     (validity via `LEAD` state) and derives `vRel` from the distance time-series, feeding
+     the standard `radard → leadOne → create_acc_control` pipeline.
 
-**Implication for longitudinal sensing:** the enabled camera-SCC path reads lead
-from `SCC_CONTROL` (sentinel on Carnival), so with the current wiring openpilot has
-no lead target — follow-distance/stop-and-go will be incomplete until the MRR20
-`0x181` is decoded and a Carnival radar-interface feeds `lead_data` into
-`create_acc_control`. The actuation channel (`aReqValue`) works; the sensing needs
-the MRR20 decode.
+**Sensing is now solved (lead distance + closing velocity from `CCNC_0x162`); the
+actuation channel (`aReqValue`) is proven. Remaining: on-car validation of the two
+together.**
 
 ## The blocker (unchanged, now precisely located)
 
