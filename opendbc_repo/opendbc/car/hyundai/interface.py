@@ -47,6 +47,12 @@ class CarInterface(CarInterfaceBase):
         ret.alphaLongitudinalAvailable = False
 
       ret.enableBsm = 0x1ba in fingerprint[CAN.ECAN]
+      # ADAS_CMD_50_50ms (0x1BA) carries the BSM blind-spot flags on the Carnival
+      # HEV (confirmed live in rlog: BCW_RtIndSta fires with a car alongside), but it
+      # is not present in the startup bus fingerprint, so the auto-detect above yields
+      # False and leftBlindspot/rightBlindspot are never populated. Force it on.
+      if candidate == CAR.KIA_CARNIVAL_HEV_4TH_GEN:
+        ret.enableBsm = True
 
       # Check if the car is hybrid. Only HEV/PHEV cars have 0xFA on E-CAN.
       if 0xFA in fingerprint[CAN.ECAN]:
