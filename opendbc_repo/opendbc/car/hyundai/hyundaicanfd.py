@@ -38,7 +38,7 @@ class CanBus(CanBusBase):
     return self._cam
 
 
-def create_steering_messages(packer, CP, CAN, enabled, lat_active, apply_torque, lkas_icon, steering_angle_deg=0.0):
+def create_steering_messages(packer, CP, CAN, enabled, lat_active, apply_torque, lkas_icon):
   values = {
     "LKA_OptUsmSta": 2,
     "LKA_SysIndReq": lkas_icon,
@@ -49,13 +49,6 @@ def create_steering_messages(packer, CP, CAN, enabled, lat_active, apply_torque,
     "LKA_RcgSta": 0,
     "Damping_Gain": 100,  # can potentially tuned for better perf [3, 200]
   }
-
-  # The LKAS_ALT ADAS_StrAnglReqVal field must track the current MDPS steering
-  # angle (DBC: "tracks MDPS->STEERING_ANGLE when not engaged"). Leaving it at 0
-  # while commanding torque during a turn makes the HDA2 ADAS ECU flag a steering
-  # fault and drop the command. Populate it from the measured steering angle.
-  if CP.flags & HyundaiFlags.CANFD_LKA_STEER_MSG:
-    values["ADAS_StrAnglReqVal"] = int(round(steering_angle_deg * 10.0))
 
   ret = []
   if CP.flags & HyundaiFlags.CANFD_LKA_STEER_MSG:
