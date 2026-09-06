@@ -88,16 +88,23 @@ point-cloud premise is wrong for this trim.** See `docs/CAN_address_correlation.
   streamed a point cloud** in any captured drive, and openpilot never decoded a
   `cornerRadar` firmware string from it (only `fwdRadar` 99110-ES500 + `fwdCamera`
   99210-R0500).
-- **Physical part:** the 2025 Carnival (incl. Hybrid EX) has **rear blind-spot radars**
-  (right `99150-R0510`; "Blind Spot / Rear Corner Radar"). These are **presence-only
-  BSD sensors** (`BCW_LtIndSta`/`BCW_RtIndSta`), already decoded via
-  `ADAS_CMD_50_50ms` → `leftBlindspot`/`rightBlindspot`. There is **no front-corner
-  radar** (the DBC `BLINDSPOTS_FRONT_CORNER_1/2` names are mislabeled blind-spot
-  presence messages, signals are `NEW_SIGNAL_N` placeholders).
-- **Implication:** no range-relative-velocity-azimuth point stream appears to exist on
-  this trim. A Tier-2 autonomous pass gated on "object closing at >X m/s" cannot use
-  radar closing-rate here (hardware is presence-only); it must fall back to the BSD
-  booleans and/or the vision model.
+- **Physical part:** the 2025 Carnival (incl. Hybrid EX) has **rear corner radars**
+  (right `99150-R0510`; "Blind Spot / Rear Corner Radar"). Per the Kia manual these
+  drive **both BCA (Blind-Spot Collision-Avoidance, forward) and RCCA (Rear
+  Cross-Traffic Collision-Avoidance, reverse)** — and RCCA *detects the velocity of
+  an approaching vehicle* ("detects vehicles approaching from left/right ... applies
+  brakes"). So the sensors are **doppler / range+velocity capable**, not presence-only.
+  Openpilot today reads only the presence booleans (`BCW_LtIndSta`/`BCW_RtIndSta` via
+  `ADAS_CMD_50_50ms`); the velocity the car internally tracks is surfaced as the
+  BCA/RCCA cluster alert + brake, not a raw point stream we have decoded. There is **no
+  front-corner radar** (the DBC `BLINDSPOTS_FRONT_CORNER_1/2` names are mislabeled; their
+  signals are `NEW_SIGNAL_N` placeholders).
+- **Corrected implication:** range + relative-velocity data *does exist* on this trim
+  (the rear corner radars measure it — that's what RCCA/BCA act on). It is **not yet
+  decoded** on the CAN bus, so Tier-2 autonomous pass cannot yet *use* it, but the
+  hardware is capable. The hunt is therefore "find which CAN message carries the BCA/RCCA
+  velocity when an alert is active," not "the hardware can't provide velocity."
+
 
 **Remaining one-drive confirmation (the "100% sure" gap):** no captured drive had a car
 actually alongside/passing, so the definitive proof that `0x7b7` never streams a point
