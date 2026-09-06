@@ -132,6 +132,43 @@ needed two additions that were missing from the stable base:
 Without these, the panda would block the CCNC HUD messages and/or the alt-button
 cruise buttons, and the car would not function.
 
+## BLOCKER: panda firmware (`main.bin`) is stale — MUST be rebuilt & committed
+
+Diagnosed 2026-09-05 against route `01e8c55a8200bc9f|00000006--df5863984b`. The
+Carnival HEV gets a persistent `controlsMismatch` (92 events) from
+`safetyRxChecksInvalid=true`, which flips on the instant the safety mode applies and
+never clears.
+
+**Root cause:** the committed panda firmware
+`panda/board/obj/panda_h7/main.bin` is frozen at the base release commit
+`6a17f75c6` (sunnypilot v2026.002.002). That release's `hyundai_canfd_init` LKA
+branch hardcodes `HYUNDAI_CANFD_STD_BUTTONS_RX_CHECKS(1)` with the comment
+"Does not use the alt buttons message" — i.e. it RX-checks `0x1CF`, which the
+Carnival HEV **never sends** (it sends `0x1AA` alt buttons). The unfulfillable
+`0x1CF` check leaves `msg_seen` unset → `valid_checksum=false` →
+`safety_rx_checks_invalid=true`. The fix commits:
+
+- `032c02a4a` added `hyundai_canfd_lka_steer_msg_alt_buttons_rx_checks`
+  (`HYUNDAI_CANFD_ALT_BUTTONS_RX_CHECKS(1)` = `0x1AA`) to `hyundai_canfd.h`.
+- `5ef4d641e` review fixes on top of it.
+
+…but **neither rebuilt `main.bin`**, and `pandad.py` auto-flashes the panda from
+this bundled binary on every boot (`selfdrive/pandad/pandad.py` `flash_panda()`).
+This is why switching to ccdunder "just works" (its `main.bin` was built after the
+`0x1AA` fix) while this fork mismatches.
+
+**Fix:** rebuild `panda/board/obj/panda_h7/main.bin` from the current
+`opendbc_repo` safety source and commit it. Requires the openpilot Linux/Docker
+build toolchain (`scons` + `arm-none-eabi-gcc`), NOT the Windows host. In the
+sunnypilot Docker image: `scons -j$(nproc)` from the repo root (or the release CI
+job that produces panda firmware), then commit the resulting `main.bin`.
+
+**Verification (from the rlog, all confirmed):** `carParams` = `hyundaiCanfd`,
+`safetyParam=178` (`LKA_STEER_MSG` 16 | `LKA_STEER_MSG_ALT` 128 | `ALT_BUTTONS` 32 |
+`HYBRID_GAS` 2) — correct. Every message the panda needs is present on bus 1 with
+valid 8-bit counters and matching CRC-16 checksums; the sole failure is the stale
+firmware's phantom `0x1CF` requirement.
+
 ## Verification performed
 
 - `py_compile` and full `ast.parse` on all 8 modified Python files — clean.
