@@ -45,8 +45,14 @@ def _initialize_neural_network_lateral_control(CP: structs.CarParams, CP_SP: str
   if nnlc_model_name == "MOCK":
     cloudlog.error({"nnlc event": "car doesn't match any Neural Network model"})
 
-  if nnlc_model_name != "MOCK" and CP.steerControlType != structs.CarParams.SteerControlType.angle:
+  # Only enable NNLC when the car has an *exact* model match. A fuzzy match
+  # (e.g. the Carnival HEV resolving to a different HKG sibling model) feeds the
+  # wrong neural feedforward, which over-drives steering torque to full scale and
+  # trips the car's EPS/ADAS fault. Fall back to the plain torque PID instead.
+  if nnlc_model_name != "MOCK" and exact_match and CP.steerControlType != structs.CarParams.SteerControlType.angle:
     enabled = params.get_bool("NeuralNetworkLateralControl")
+  else:
+    enabled = False
 
   CP_SP.neuralNetworkLateralControl.model.path = nnlc_model_path
   CP_SP.neuralNetworkLateralControl.model.name = nnlc_model_name
