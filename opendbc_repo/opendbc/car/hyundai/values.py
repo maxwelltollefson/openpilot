@@ -56,11 +56,12 @@ class CarControllerParams:
     else:
       self.STEER_MAX = 384
 
-    # Carnival HEV has been observed to do ~10 Nm/sec stock. Conservatively double the CAN-FD deltas.
-    # CAN-FD base is STEER_DELTA_UP=2 / STEER_DELTA_DOWN=3; doubled => UP=4 / DOWN=6, and DOWN must
-    # stay >= UP so steering force can be shed faster than it is added (safety convention).
+    # Carnival HEV: match the proven-working ccdunder port's effective deltas
+    # (UP=2 from the CAN-FD base, DOWN=6). ccdunder's override had a typo that set
+    # DOWN twice, leaving UP at the CAN-FD default 2; our earlier UP=4 was more
+    # aggressive than proven and may over-rate the ADAS torque request.
     if CP.carFingerprint in (CAR.KIA_CARNIVAL_HEV_4TH_GEN,):
-      self.STEER_DELTA_UP = 4
+      self.STEER_DELTA_UP = 2
       self.STEER_DELTA_DOWN = 6
 
 
@@ -75,7 +76,6 @@ class HyundaiSafetyFlags(IntFlag):
   CANFD_LKA_STEER_MSG_ALT = 128
   FCEV_GAS = 256
   ALT_LIMITS_2 = 512
-  CCNC = 1024
 
 
 # Hyundai/Kia/Genesis SCC (Smart Cruise Control) and steering architecture:
