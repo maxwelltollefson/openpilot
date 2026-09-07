@@ -271,17 +271,13 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
       ret.leftBlindspot = bool(cp.vl["ADAS_CMD_50_50ms"]["BCW_LtIndSta"])
       ret.rightBlindspot = bool(cp.vl["ADAS_CMD_50_50ms"]["BCW_RtIndSta"])
 
-    # The Carnival HEV is CCNC *and* LKA-steering (HDA2) — its CCNC HMI messages
-    # (0x161/0x162/0x1B5) live on ECAN (bus 1), NOT the camera bus. Read them from
-    # the ECAN parser (cp) for LKA-steering cars, and from cp_cam (bus 2) otherwise.
-    if self.CP.flags & HyundaiFlags.CCNC:
-      ccnc_parser = cp if self.CP.flags & HyundaiFlags.CANFD_LKA_STEER_MSG else cp_cam
-      self.msg_161 = copy.copy(ccnc_parser.vl["CCNC_0x161"])
-      self.msg_162 = copy.copy(ccnc_parser.vl["CCNC_0x162"])
+    if self.CP.flags & HyundaiFlags.CCNC and not self.CP.flags & HyundaiFlags.CANFD_LKA_STEER_MSG:
+      self.msg_161 = copy.copy(cp_cam.vl["CCNC_0x161"])
+      self.msg_162 = copy.copy(cp_cam.vl["CCNC_0x162"])
       # FR_CMR_03_50ms (msg_1b5) carries lane-position + lead-distance for the full
       # CCNC cluster UI (lane animation, lane-change assist, longitudinal HUD).
-      if "FR_CMR_03_50ms" in ccnc_parser.vl:
-        self.msg_1b5 = copy.copy(ccnc_parser.vl["FR_CMR_03_50ms"])
+      if "FR_CMR_03_50ms" in cp_cam.vl:
+        self.msg_1b5 = copy.copy(cp_cam.vl["FR_CMR_03_50ms"])
 
     # cruise state
     # CAN FD cars enable on main button press, set available if no TCS faults preventing engagement
@@ -352,18 +348,12 @@ class CarState(CarStateBase, EsccCarStateBase, MadsCarState, CarStateExt):
       # frame (no timestamps ever recorded for an absent message), which drives
       # can_valid=False -> EventName.canError -> "Unknown Vehicle Variant" dashcam.
       msgs += [("ADAS_CMD_50_50ms", float("nan"))]
-    if CP.flags & HyundaiFlags.CCNC:
-      ccnc_msgs = [
+    if CP.flags & HyundaiFlags.CCNC and not CP.flags & HyundaiFlags.CANFD_LKA_STEER_MSG:
+      cam_msgs += [
         ("CCNC_0x161", 20),
         ("CCNC_0x162", 20),
         ("FR_CMR_03_50ms", 50),
       ]
-      if CP.flags & HyundaiFlags.CANFD_LKA_STEER_MSG:
-        # LKA-steering CCNC (Carnival HEV): CCNC HMI messages are on ECAN (bus 1),
-        # so subscribe them in the ECAN parser (msgs), not the camera parser.
-        msgs += ccnc_msgs
-      else:
-        cam_msgs += ccnc_msgs
     return {
       Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], msgs, CanBus(CP).ECAN),
       Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], cam_msgs, CanBus(CP).CAM),
