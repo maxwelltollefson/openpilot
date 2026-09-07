@@ -48,15 +48,22 @@ class IntelligentCruiseButtonManagementInterface(IntelligentCruiseButtonManageme
     can_sends = []
     if self.CP.flags & HyundaiFlags.CANFD_ALT_BUTTONS:
       # ALT_BUTTONS cars (e.g. 2025-26 Kia Carnival) use the 0x1AA CRUISE_BUTTONS_ALT
-      # message with an 8-bit COUNTER. Cycle the counter the same way as the standard
-      # CAN-FD path, but note the counter width is 8 bits (not the 4-bit nibble of 0x1CF).
+      # message with an 8-bit COUNTER (strict +1 per frame, monotonic, wraps 0x100).
+      #
+      # BUG FIX: the prior code derived the counter from CS.buttons_counter (the car's
+      # LIVE 50 Hz counter) + a small [1,1,0,None] offset. Since ICBM fires at ~5 Hz,
+      # CS.buttons_counter has advanced ~10 by the next fire, producing GAPPED counters
+      # (11->21->31->43...). The Carnival SCC ECU reads a non-+1 counter jump during a
+      # held button=1 as a LONG-PRESS -> auto-repeat -> the set-speed blasts through
+      # wild intermediate values (100/80/30) before settling. Fix: drive a private
+      # monotonic +1 counter so each synthesized press is a clean single step.
       if (self.frame - self.last_button_frame) * DT_CTRL > 0.2:
-        self.button_frame += 1
-        button_counter_offset = [1, 1, 0, None][self.button_frame % 4]
-        if button_counter_offset is not None:
-          for _ in range(20):
-            can_sends.append(hyundaicanfd.create_buttons(packer, self.CP, CAN, (CS.buttons_counter + button_counter_offset) % 0x100, send_button))
-          self.last_button_frame = self.frame
+        if not hasattr(self, '_alt_btn_counter'):
+          self._alt_btn_counter = (CS.buttons_counter + 1) & 0xFF
+        for _ in range(4):  # a few redundant copies for adoption robustness, each +1
+          self._alt_btn_counter = (self._alt_btn_counter + 1) & 0xFF
+          can_sends.append(hyundaicanfd.create_buttons(packer, self.CP, CAN, self._alt_btn_counter, send_button))
+        self.last_button_frame = self.frame
     else:
       if (self.frame - self.last_button_frame) * DT_CTRL > 0.2:
         self.button_frame += 1
