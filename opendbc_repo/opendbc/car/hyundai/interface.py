@@ -104,6 +104,13 @@ class CarInterface(CarInterfaceBase):
         ret.safetyConfigs[-1].safetyParam |= HyundaiSafetyFlags.CANFD_ALT_BUTTONS.value
       if ret.flags & HyundaiFlags.CANFD_CAMERA_SCC:
         ret.safetyConfigs[-1].safetyParam |= HyundaiSafetyFlags.CAMERA_SCC.value
+      if ret.flags & HyundaiFlags.CCNC:
+        # CCNC cluster HMI re-broadcast (0x161/0x162) — allowed when the platform
+        # re-renders the cluster. The Carnival HEV is CCNC *and* LKA-steering (HDA2),
+        # so this is NOT gated on `not CANFD_LKA_STEER_MSG` (that guard would wrongly
+        # exclude the Carnival); the safety header selects the CCNC TX only for the
+        # LKA_STEER_MSG_ALT + ALT_BUTTONS combination.
+        ret.safetyConfigs[-1].safetyParam |= HyundaiSafetyFlags.CCNC.value
 
     else:
       # Shared configuration for non CAN-FD cars

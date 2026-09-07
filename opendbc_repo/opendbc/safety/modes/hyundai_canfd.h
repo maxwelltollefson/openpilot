@@ -36,6 +36,14 @@
 #define HYUNDAI_CANFD_SCC_CONTROL_COMMON_TX_MSGS(e_can, longitudinal) \
   {0x1A0, e_can, 32, .check_relay = (longitudinal)},  /* SCC_CONTROL */ \
 
+// CCNC cluster HMI re-broadcast (openpilot re-renders the cluster's lane/set-speed/lead
+// UI). TX on ECAN (bus 1 for LKA-steering). The Carnival HEV (CCNC + LKA-steering +
+// ALT_BUTTONS) is the car that emits these; no upstream LKA-steering CCNC precedent existed
+// before this port.
+#define HYUNDAI_CANFD_CCNC_TX_MSGS(e_can) \
+  {0x161, e_can, 32, .check_relay = false},  /* CCNC_0x161 */ \
+  {0x162, e_can, 32, .check_relay = false},  /* CCNC_0x162 */ \
+
 // *** Addresses checked in rx hook ***
 // EV, ICE, HYBRID: ACCELERATOR (0x35), ACCELERATOR_BRAKE_ALT (0x100), ACCELERATOR_ALT (0x105)
 #define HYUNDAI_CANFD_COMMON_RX_CHECKS(pt_bus)                                                                          \
@@ -240,6 +248,7 @@ static bool hyundai_canfd_tx_hook(const CANPacket_t *msg) {
 static safety_config hyundai_canfd_init(uint16_t param) {
   const uint16_t HYUNDAI_PARAM_CANFD_LKA_STEER_MSG_ALT = 128;
   const uint16_t HYUNDAI_PARAM_CANFD_ALT_BUTTONS = 32;
+  const uint16_t HYUNDAI_PARAM_CCNC = 1024;
 
   static const CanMsg HYUNDAI_CANFD_LKA_STEER_MSG_TX_MSGS[] = {
     HYUNDAI_CANFD_LKA_STEER_MSG_COMMON_TX_MSGS(0, 1)
@@ -255,6 +264,13 @@ static safety_config hyundai_canfd_init(uint16_t param) {
 
   static const CanMsg HYUNDAI_CANFD_LKA_STEER_MSG_ALT_ALT_BUTTONS_TX_MSGS[] = {
     HYUNDAI_CANFD_LKA_STEER_MSG_ALT_ALT_BUTTONS_COMMON_TX_MSGS(0, 1)
+  };
+
+  // Carnival HEV (CCNC + LKA-steering + ALT_BUTTONS): also TX the CCNC cluster HMI
+  // re-render (lane animation / set-speed / lead / fault-free dash).
+  static const CanMsg HYUNDAI_CANFD_LKA_STEER_MSG_ALT_ALT_BUTTONS_CCNC_TX_MSGS[] = {
+    HYUNDAI_CANFD_LKA_STEER_MSG_ALT_ALT_BUTTONS_COMMON_TX_MSGS(0, 1)
+    HYUNDAI_CANFD_CCNC_TX_MSGS(1)
   };
 
   static const CanMsg HYUNDAI_CANFD_LKA_STEER_MSG_LONG_TX_MSGS[] = {
@@ -297,6 +313,7 @@ static safety_config hyundai_canfd_init(uint16_t param) {
   gen_crc_lookup_table_16(0x1021, hyundai_canfd_crc_lut);
   hyundai_canfd_alt_buttons = GET_FLAG(param, HYUNDAI_PARAM_CANFD_ALT_BUTTONS);
   hyundai_canfd_lka_steer_msg_alt = GET_FLAG(param, HYUNDAI_PARAM_CANFD_LKA_STEER_MSG_ALT);
+  const bool hyundai_ccnc = GET_FLAG(param, HYUNDAI_PARAM_CCNC);
 
   safety_config ret;
   if (hyundai_longitudinal) {
@@ -355,7 +372,9 @@ static safety_config hyundai_canfd_init(uint16_t param) {
       }
 
       if (hyundai_canfd_alt_buttons) {
-        if (hyundai_canfd_lka_steer_msg_alt) {
+        if (hyundai_ccnc && hyundai_canfd_lka_steer_msg_alt) {
+          SET_TX_MSGS(HYUNDAI_CANFD_LKA_STEER_MSG_ALT_ALT_BUTTONS_CCNC_TX_MSGS, ret);
+        } else if (hyundai_canfd_lka_steer_msg_alt) {
           SET_TX_MSGS(HYUNDAI_CANFD_LKA_STEER_MSG_ALT_ALT_BUTTONS_TX_MSGS, ret);
         } else {
           SET_TX_MSGS(HYUNDAI_CANFD_LKA_STEER_MSG_ALT_BUTTONS_TX_MSGS, ret);
