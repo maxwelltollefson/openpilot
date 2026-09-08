@@ -443,8 +443,10 @@ static safety_config hyundai_canfd_init(uint16_t param) {
 // Block the camera's native CCNC HMI frames (0x161/0x162) from reaching the wider
 // bus, so openpilot's re-render (create_ccnc) is the sole transmitter and the cluster
 // doesn't flicker from two co-resident senders. Only active when the CCNC flag is set
-// (Carnival HEV); returns true = block forwarding.
+// (Carnival HEV); returns true = block forwarding. The camera forwards CCNC from its
+// own bus (2) toward ECAN, so block there.
 static bool hyundai_canfd_ccnc_fwd_hook(int bus_num, int addr) {
+  (void)bus_num;  // the block is address-scoped, not bus-scoped, on this topology
   if (hyundai_ccnc && (addr == 0x161U || addr == 0x162U)) {
     return true;
   }
