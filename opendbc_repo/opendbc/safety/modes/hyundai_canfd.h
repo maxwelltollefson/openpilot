@@ -41,8 +41,8 @@
 // ALT_BUTTONS) is the car that emits these; no upstream LKA-steering CCNC precedent existed
 // before this port.
 #define HYUNDAI_CANFD_CCNC_TX_MSGS(e_can) \
-  {0x161, e_can, 32, .check_relay = false},  /* CCNC_0x161 */ \
-  {0x162, e_can, 32, .check_relay = false},  /* CCNC_0x162 */ \
+  {0x161, e_can, 32, .check_relay = true},  /* CCNC_0x161 */ \
+  {0x162, e_can, 32, .check_relay = true},  /* CCNC_0x162 */ \
 
 // *** Addresses checked in rx hook ***
 // EV, ICE, HYBRID: ACCELERATOR (0x35), ACCELERATOR_BRAKE_ALT (0x100), ACCELERATOR_ALT (0x105)
@@ -68,6 +68,7 @@
 
 static bool hyundai_canfd_alt_buttons = false;
 static bool hyundai_canfd_lka_steer_msg_alt = false;
+static bool hyundai_ccnc = false;
 
 static unsigned int hyundai_canfd_get_lka_addr(void) {
   return hyundai_canfd_lka_steer_msg_alt ? 0x110U : 0x50U;
@@ -313,7 +314,8 @@ static safety_config hyundai_canfd_init(uint16_t param) {
   gen_crc_lookup_table_16(0x1021, hyundai_canfd_crc_lut);
   hyundai_canfd_alt_buttons = GET_FLAG(param, HYUNDAI_PARAM_CANFD_ALT_BUTTONS);
   hyundai_canfd_lka_steer_msg_alt = GET_FLAG(param, HYUNDAI_PARAM_CANFD_LKA_STEER_MSG_ALT);
-  const bool hyundai_ccnc = GET_FLAG(param, HYUNDAI_PARAM_CCNC);
+  const bool hyundai_ccnc_value = GET_FLAG(param, HYUNDAI_PARAM_CCNC);
+  hyundai_ccnc = hyundai_ccnc_value;
 
   safety_config ret;
   if (hyundai_longitudinal) {
@@ -438,10 +440,22 @@ static safety_config hyundai_canfd_init(uint16_t param) {
   return ret;
 }
 
+// Block the camera's native CCNC HMI frames (0x161/0x162) from reaching the wider
+// bus, so openpilot's re-render (create_ccnc) is the sole transmitter and the cluster
+// doesn't flicker from two co-resident senders. Only active when the CCNC flag is set
+// (Carnival HEV); returns true = block forwarding.
+static bool hyundai_canfd_ccnc_fwd_hook(int bus_num, int addr) {
+  if (hyundai_ccnc && (addr == 0x161U || addr == 0x162U)) {
+    return true;
+  }
+  return false;
+}
+
 const safety_hooks hyundai_canfd_hooks = {
   .init = hyundai_canfd_init,
   .rx = hyundai_canfd_rx_hook,
   .tx = hyundai_canfd_tx_hook,
+  .fwd = hyundai_canfd_ccnc_fwd_hook,
   .get_counter = hyundai_canfd_get_counter,
   .get_checksum = hyundai_canfd_get_checksum,
   .compute_checksum = hyundai_common_canfd_compute_checksum,

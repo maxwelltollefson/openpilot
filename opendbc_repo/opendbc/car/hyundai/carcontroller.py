@@ -217,6 +217,15 @@ class CarController(CarControllerBase, EsccCarController, LeadDataCarController,
                                                   CC.hudControl, CC.leftBlinker, CC.rightBlinker, CS.msg_161, CS.msg_162,
                                                   CS.msg_1b5, CS.is_metric, CS.out, CS.main_cruise_enabled, self.lfa_icon))
 
+    # The Carnival HEV is CCNC *and* LKA-steering: render the CCNC cluster even though
+    # the LFA/HDA icon block above is gated off (lka_steering=True). The safety model's
+    # fwd hook blocks the camera's own 0x161/0x162 so openpilot is the sole TX (block-and-
+    # replace via check_relay + fwd), avoiding the same-bus collision/flicker.
+    if self.frame % 5 == 0 and lka_steering and self.CP.flags & HyundaiFlags.CCNC:
+      can_sends.extend(hyundaicanfd.create_ccnc(self.packer, self.CAN, self.CP.openpilotLongitudinalControl, CC.enabled,
+                                                CC.hudControl, CC.leftBlinker, CC.rightBlinker, CS.msg_161, CS.msg_162,
+                                                CS.msg_1b5, CS.is_metric, CS.out, CS.main_cruise_enabled, self.lfa_icon))
+
     # blinkers
     if lka_steering and self.CP.flags & HyundaiFlags.CANFD_ENABLE_BLINKERS:
       can_sends.extend(hyundaicanfd.create_spas_messages(self.packer, self.CAN, CC.leftBlinker, CC.rightBlinker))
