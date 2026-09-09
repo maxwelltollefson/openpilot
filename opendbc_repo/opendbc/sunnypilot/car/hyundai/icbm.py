@@ -59,7 +59,7 @@ class IntelligentCruiseButtonManagementInterface(IntelligentCruiseButtonManageme
       # monotonic +1 counter so each synthesized press is a clean single step.
       if (self.frame - self.last_button_frame) * DT_CTRL > 0.2:
         if not hasattr(self, '_alt_btn_counter'):
-          self._alt_btn_counter = (CS.buttons_counter + 1) & 0xFF
+          self._alt_btn_counter = int(CS.buttons_counter + 1) & 0xFF
         for _ in range(4):  # a few redundant copies for adoption robustness, each +1
           self._alt_btn_counter = (self._alt_btn_counter + 1) & 0xFF
           can_sends.append(hyundaicanfd.create_buttons(packer, self.CP, CAN, self._alt_btn_counter, send_button))
