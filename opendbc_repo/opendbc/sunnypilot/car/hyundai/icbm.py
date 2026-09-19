@@ -57,13 +57,15 @@ class IntelligentCruiseButtonManagementInterface(IntelligentCruiseButtonManageme
       # held button=1 as a LONG-PRESS -> auto-repeat -> the set-speed blasts through
       # wild intermediate values (100/80/30) before settling. Fix: drive a private
       # monotonic +1 counter so each synthesized press is a clean single step.
-      if (self.frame - self.last_button_frame) * DT_CTRL > 0.2:
+      if (self.frame - self.last_button_frame) * DT_CTRL > 0.5:
         if not hasattr(self, '_alt_btn_counter'):
           # buttons_counter is a scaled CAN signal (float); cast to int before & 0xFF
           self._alt_btn_counter = int(CS.buttons_counter + 1) & 0xFF
-        for _ in range(4):  # a few redundant copies for adoption robustness, each +1
-          self._alt_btn_counter = (self._alt_btn_counter + 1) & 0xFF
-          can_sends.append(hyundaicanfd.create_buttons(packer, self.CP, CAN, self._alt_btn_counter, send_button))
+        # ONE clean +1 press per tick (the 4-copy burst made each ICBM tick look like
+        # 4 consecutive SET+ presses -> overshoot). 0.5s cadence = 2 steps/sec, the
+        # car's safe rate.
+        self._alt_btn_counter = (self._alt_btn_counter + 1) & 0xFF
+        can_sends.append(hyundaicanfd.create_buttons(packer, self.CP, CAN, self._alt_btn_counter, send_button))
         self.last_button_frame = self.frame
     else:
       if (self.frame - self.last_button_frame) * DT_CTRL > 0.2:
