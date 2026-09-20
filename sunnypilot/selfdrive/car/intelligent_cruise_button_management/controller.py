@@ -18,11 +18,6 @@ SendButtonState = custom.IntelligentCruiseButtonManagement.SendButtonState
 ALLOWED_SPEED_THRESHOLD = 1.8  # m/s, ~4 MPH
 HYST_GAP = 0.0  # currently disabled; TODO-SP: might need to be brand-specific
 INACTIVE_TIMER = 0.4
-# The cluster set-speed readback (CS.cruiseState.speedCluster) LAGS each synthetic press
-# and is integer-quantized, so comparing it against v_target with no deadband makes the
-# direction decision flip on boundary noise -> ICBM presses the WRONG WAY (overshoot /
-# oscillation). Only action a step when the gap exceeds this many display units.
-V_TARGET_DEADBAND = 1
 
 
 SEND_BUTTONS = {
@@ -52,9 +47,9 @@ class IntelligentCruiseButtonManagement:
 
   @property
   def v_cruise_equal(self) -> bool:
-    # Within the deadband counts as "equal" so we stop stepping once we're close enough,
-    # instead of chasing the lagging readback back and forth.
-    return abs(self.v_target - self.v_cruise_cluster) <= V_TARGET_DEADBAND
+    # Exact match. A deadband here stops one step early ("permanent off by one"); the
+    # wrong-direction oscillation is handled by the re-sync on wake, not by a deadband.
+    return self.v_target == self.v_cruise_cluster
 
   def update_calculations(self, CS: car.CarState, LP_SP: custom.LongitudinalPlanSP) -> None:
     speed_conv = CV.MS_TO_KPH if self.is_metric else CV.MS_TO_MPH
@@ -94,12 +89,12 @@ class IntelligentCruiseButtonManagement:
 
         # ACCELERATING
         elif self.state == State.increasing:
-          if self.v_cruise_equal:
+          if self.v_target <= self.v_cruise_cluster:
             self.state = State.holding
 
         # DECELERATING
         elif self.state == State.decreasing:
-          if self.v_cruise_equal or self.v_cruise_cluster <= self.v_cruise_min:
+          if self.v_target >= self.v_cruise_cluster or self.v_cruise_cluster <= self.v_cruise_min:
             self.state = State.holding
 
     # INACTIVE
