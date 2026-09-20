@@ -43,6 +43,13 @@ class IntelligentCruiseButtonManagement:
     self.v_target_ms_last = 0.0
     self.is_metric = False
 
+    # Stall detection: some synthetic presses are silently NOT registered by the car,
+    # so v_target advances while v_cruise_cluster doesn't -> drift. Track the last
+    # cluster value we saw while actively stepping; if it hasn't moved after a couple
+    # of press cycles, re-sync v_target to reality instead of chasing.
+    self._last_active_cluster = None
+    self._stall_ticks = 0
+
     self.cruise_button_timers = CRUISE_BUTTON_TIMER
 
   @property
@@ -107,6 +114,22 @@ class IntelligentCruiseButtonManagement:
         self.v_target = self.v_cruise_cluster
         self.pre_active_timer = int(INACTIVE_TIMER / DT_CTRL)
         self.state = State.preActive
+
+    # STALL DETECT: while actively stepping, if the car's cluster readback hasn't moved
+    # across successive evaluations (presses being dropped/ignored), adopt reality as
+    # the target so we stop chasing a value the car never accepted.
+    if self.state in (State.increasing, State.decreasing):
+      if self._last_active_cluster is not None and self.v_cruise_cluster == self._last_active_cluster:
+        self._stall_ticks += 1
+      else:
+        self._stall_ticks = 0
+      self._last_active_cluster = self.v_cruise_cluster
+      if self._stall_ticks >= 2:
+        self.v_target = self.v_cruise_cluster
+        self._stall_ticks = 0
+    else:
+      self._last_active_cluster = None
+      self._stall_ticks = 0
 
     send_button = SEND_BUTTONS.get(self.state, SendButtonState.none)
 
