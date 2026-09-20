@@ -59,6 +59,7 @@ class IntelligentCruiseButtonManagementInterface(IntelligentCruiseButtonManageme
       # monotonic +1 counter so each synthesized press is a clean single step.
       if (self.frame - self.last_button_frame) * DT_CTRL > 0.5:
         if not hasattr(self, '_alt_btn_counter'):
+          # buttons_counter is a scaled CAN signal (float); cast to int before & 0xFF
           self._alt_btn_counter = int(CS.buttons_counter + 1) & 0xFF
         # ONE clean +1 press per tick (the 4-copy burst made each ICBM tick look like
         # 4 consecutive SET+ presses -> overshoot). 0.5s cadence = 2 steps/sec, the
