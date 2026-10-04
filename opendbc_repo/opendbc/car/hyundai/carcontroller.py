@@ -212,7 +212,16 @@ class CarController(CarControllerBase, EsccCarController, LeadDataCarController,
     # LFA and HDA icons
     if self.frame % 5 == 0 and (not lka_steering or lka_steering_long):
       can_sends.append(hyundaicanfd.create_lfahda_cluster(self.packer, self.CAN, self.CP, CC.enabled, self.lfa_icon))
-      if self.CP.flags & HyundaiFlags.CCNC:
+      # NOTE: create_ccnc (0x161/0x162) must never be sent on LKA-steering (HDA2) CCNC cars --
+      # the ADAS ECU already owns and transmits those exact message IDs on this bus. Re-broadcasting
+      # them collides with the ECU own transmission, causing real CAN-FD bus arbitration errors
+      # (observed as repeated bus-off on the main vehicle bus). This was already identified and fixed
+      # for the default (no-longitudinal) case in a prior revert, but that revert only removed a
+      # second, newly-added call site and left this original one gated on lka_steering_long, which
+      # flips true the moment Experimental Mode (openpilotLongitudinalControl) is enabled -- silently
+      # re-enabling the exact collision the revert was meant to close. Gate on not lka_steering
+      # unconditionally so it can never fire for this car regardless of longitudinal control state.
+      if self.CP.flags & HyundaiFlags.CCNC and not lka_steering:
         can_sends.extend(hyundaicanfd.create_ccnc(self.packer, self.CAN, self.CP.openpilotLongitudinalControl, CC.enabled,
                                                   CC.hudControl, CC.leftBlinker, CC.rightBlinker, CS.msg_161, CS.msg_162,
                                                   CS.msg_1b5, CS.is_metric, CS.out, CS.main_cruise_enabled, self.lfa_icon))
